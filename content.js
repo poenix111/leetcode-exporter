@@ -6,11 +6,11 @@
 (function () {
   "use strict";
 
-  // Prevent multiple injections
-  if (window.__LEETCODE_TO_PDF_INJECTED__) return;
-  window.__LEETCODE_TO_PDF_INJECTED__ = true;
-
   const BTN_ID = "leetcode-pdf-export-btn";
+
+  // Clean up any previously injected button so updates always bind the latest version
+  const oldBtn = document.getElementById(BTN_ID);
+  if (oldBtn) oldBtn.remove();
 
   /* ---- Selectors (Ordered by reliability on modern LeetCode) ---- */
   const DESCRIPTION_SELECTORS = [
@@ -150,36 +150,47 @@
   function extractDescriptionHTML(descRoot) {
     if (!descRoot) return null;
 
-    // On modern LeetCode:
-    // descRoot is [data-track-load="description_content"]
-    // child 0 = Title + Badges + Topics/Companies buttons
-    // child 1 (.elfjS) = Pure problem content (statement, examples with images, constraints)
-    let targetEl = descRoot.querySelector(".elfjS");
-    if (!targetEl) {
-      if (descRoot.children.length >= 2 && descRoot.children[1].innerText?.length > 30) {
-        targetEl = descRoot.children[1];
-      } else {
-        targetEl = descRoot;
+    const clone = descRoot.cloneNode(true);
+
+    // Remove the first child if it contains the problem title / difficulty badge
+    // (since we render our own clean title and difficulty badge in the header)
+    if (clone.children.length > 0) {
+      const firstChild = clone.children[0];
+      const hasTitleOrProbLink =
+        firstChild.querySelector('a[href*="/problems/"]') ||
+        firstChild.querySelector('[class*="text-title"]') ||
+        (firstChild.innerText && /^\d+\.\s+/.test(firstChild.innerText.trim()));
+
+      if (hasTitleOrProbLink) {
+        firstChild.remove();
       }
     }
 
-    const clone = targetEl.cloneNode(true);
+    // Remove interactive buttons ("Topics", "Companies", accordion toggles, etc.)
+    clone.querySelectorAll("button").forEach((b) => b.remove());
 
-    // Remove ONLY interactive UI noise (buttons, share/like bars, feedback forms)
-    // NEVER remove [data-state] or [aria-haspopup] because LeetCode uses Radix UI
-    // with data-state="closed" for technical terms (e.g. head, sorted, duplicate, distinct)
-    const elementsToRemove = clone.querySelectorAll(
-      'button, [class*="subscribe"], [class*="toolbar"], [class*="feedback"], [class*="reaction"]'
-    );
-    elementsToRemove.forEach((el) => el.remove());
+    // Remove feedback links, subscription banners, and toolbars
+    clone
+      .querySelectorAll(
+        '[class*="toolbar"], [class*="feedback"], [class*="subscribe"], [class*="reaction"]'
+      )
+      .forEach((el) => el.remove());
 
-    // Remove bottom reaction bar (thumbs up/down counter) if present at end of description
-    const lastEl = clone.lastElementChild;
-    if (lastEl && lastEl.querySelectorAll("svg").length >= 2 && !lastEl.innerText?.includes("Constraint")) {
-      lastEl.remove();
-    }
+    // Remove bottom reaction bar (thumbs up/down counter, submission stats)
+    Array.from(clone.querySelectorAll("div")).forEach((div) => {
+      const text = div.innerText || "";
+      if (text.includes("Accepted") && text.includes("Submissions")) {
+        div.remove();
+      } else if (
+        div.querySelectorAll("svg").length >= 3 &&
+        !text.includes("Example") &&
+        !text.includes("Constraint")
+      ) {
+        div.remove();
+      }
+    });
 
-    // Resolve relative URLs to absolute URLs so diagrams/images always render
+    // Resolve relative URLs to absolute URLs so all diagrams and images render properly
     clone.querySelectorAll("img").forEach((img) => {
       const src = img.getAttribute("src");
       if (src && !src.startsWith("http") && !src.startsWith("data:")) {
