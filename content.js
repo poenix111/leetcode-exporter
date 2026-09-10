@@ -150,27 +150,36 @@
   function extractDescriptionHTML(descRoot) {
     if (!descRoot) return null;
 
-    let targetEl = descRoot;
-
-    // Modern LeetCode structure:
+    // On modern LeetCode:
     // descRoot is [data-track-load="description_content"]
-    // child 0 = Title + Badges + Topics/Companies
-    // child 1 = The actual description content (problem statement, examples, constraints)
-    if (descRoot.children.length >= 2 && descRoot.children[1].innerText?.length > 30) {
-      targetEl = descRoot.children[1];
+    // child 0 = Title + Badges + Topics/Companies buttons
+    // child 1 (.elfjS) = Pure problem content (statement, examples with images, constraints)
+    let targetEl = descRoot.querySelector(".elfjS");
+    if (!targetEl) {
+      if (descRoot.children.length >= 2 && descRoot.children[1].innerText?.length > 30) {
+        targetEl = descRoot.children[1];
+      } else {
+        targetEl = descRoot;
+      }
     }
 
     const clone = targetEl.cloneNode(true);
 
-    // Remove buttons, toolbars, interactive tags, and ads
+    // Remove ONLY interactive UI noise (buttons, share/like bars, feedback forms)
+    // NEVER remove [data-state] or [aria-haspopup] because LeetCode uses Radix UI
+    // with data-state="closed" for technical terms (e.g. head, sorted, duplicate, distinct)
     const elementsToRemove = clone.querySelectorAll(
-      'button, [class*="subscribe"], [class*="like"], [class*="share"], ' +
-      '[class*="toolbar"], [class*="action"], [class*="feedback"], ' +
-      '[class*="tag-container"], [data-state], [aria-haspopup]'
+      'button, [class*="subscribe"], [class*="toolbar"], [class*="feedback"], [class*="reaction"]'
     );
     elementsToRemove.forEach((el) => el.remove());
 
-    // Resolve relative URLs to absolute URLs
+    // Remove bottom reaction bar (thumbs up/down counter) if present at end of description
+    const lastEl = clone.lastElementChild;
+    if (lastEl && lastEl.querySelectorAll("svg").length >= 2 && !lastEl.innerText?.includes("Constraint")) {
+      lastEl.remove();
+    }
+
+    // Resolve relative URLs to absolute URLs so diagrams/images always render
     clone.querySelectorAll("img").forEach((img) => {
       const src = img.getAttribute("src");
       if (src && !src.startsWith("http") && !src.startsWith("data:")) {
