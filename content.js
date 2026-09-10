@@ -349,8 +349,8 @@
 
     /* Handwriting section */
     .handwriting-section {
-      margin-top: 24px;
-      page-break-before: always;
+      margin-top: 16px;
+      page-break-inside: auto;
     }
 
     .handwriting-title {
@@ -358,25 +358,25 @@
       align-items: baseline;
       justify-content: space-between;
       border-bottom: 1px solid #d1d5db;
-      padding-bottom: 6px;
-      margin-bottom: 12px;
+      padding-bottom: 4px;
+      margin-bottom: 10px;
     }
 
     .handwriting-title span {
-      font-size: 13pt;
+      font-size: 12pt;
       font-weight: 700;
       color: #111827;
     }
 
     .handwriting-sub {
-      font-size: 8.5pt !important;
+      font-size: 8pt !important;
       font-weight: 400 !important;
       color: #9ca3af;
     }
 
     .grid-sheet {
       width: 100%;
-      min-height: 820px;
+      min-height: 380px;
       border: 1px solid #e5e7eb;
       border-radius: 6px;
       background-size: 20px 20px;
@@ -391,7 +391,7 @@
         print-color-adjust: exact !important;
       }
       .grid-sheet {
-        min-height: 95vh;
+        min-height: 380px;
       }
     }
 
