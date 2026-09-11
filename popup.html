@@ -12,7 +12,7 @@
         <img src="icons/icon48.png" alt="Logo" class="logo-icon">
         <div>
           <h1>LeetCode to PDF</h1>
-          <p class="tagline">Export &amp; solve by hand ✍️</p>
+          <p class="tagline">Export problem &amp; code ✍️💻</p>
         </div>
       </div>
     </div>
@@ -25,6 +25,7 @@
 
     <!-- Options -->
     <div class="options-section">
+      <div class="section-label">Problem Options</div>
       <label class="toggle-row">
         <span class="toggle-label">
           <span class="toggle-icon">📝</span>
@@ -42,18 +43,70 @@
         <input type="checkbox" id="opt-images" checked>
         <span class="toggle-slider"></span>
       </label>
+
+      <div class="section-label" style="margin-top: 6px;">Code Options</div>
+      <label class="toggle-row">
+        <span class="toggle-label">
+          <span class="toggle-icon">💻</span>
+          Include code in PDF
+        </span>
+        <input type="checkbox" id="opt-code" checked>
+        <span class="toggle-slider"></span>
+      </label>
+
+      <div id="code-config-panel" class="code-config-panel">
+        <div class="select-row">
+          <label for="select-theme" class="select-label">
+            <span class="toggle-icon">🎨</span>
+            Code Theme
+          </label>
+          <select id="select-theme" class="theme-select">
+            <optgroup label="Light (Best for Printing)">
+              <option value="github-light" selected>GitHub Light</option>
+              <option value="solarized-light">Solarized Light</option>
+              <option value="one-light">Atom One Light</option>
+            </optgroup>
+            <optgroup label="Dark Themes">
+              <option value="vscode-dark">VS Code Dark+</option>
+              <option value="dracula">Dracula</option>
+              <option value="one-dark">One Dark Pro</option>
+              <option value="monokai">Monokai</option>
+              <option value="nord">Nord</option>
+            </optgroup>
+          </select>
+        </div>
+
+        <label class="toggle-row">
+          <span class="toggle-label">
+            <span class="toggle-icon">🔢</span>
+            Line numbers
+          </span>
+          <input type="checkbox" id="opt-line-numbers" checked>
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
     </div>
 
-    <!-- Export Button -->
-    <button id="btn-export" class="export-btn" disabled>
-      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6z"/>
-        <polyline points="14 2 14 8 20 8"/>
-        <line x1="12" y1="12" x2="12" y2="18"/>
-        <polyline points="8 15 12 18 16 15"/>
-      </svg>
-      Export to PDF
-    </button>
+    <!-- Actions -->
+    <div class="actions-section">
+      <button id="btn-export" class="export-btn" disabled>
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6z"/>
+          <polyline points="14 2 14 8 20 8"/>
+          <line x1="12" y1="12" x2="12" y2="18"/>
+          <polyline points="8 15 12 18 16 15"/>
+        </svg>
+        Export to PDF
+      </button>
+
+      <button id="btn-download-code" class="secondary-btn" disabled>
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="16 18 22 12 16 6"/>
+          <polyline points="8 6 2 12 8 18"/>
+        </svg>
+        Download Code File
+      </button>
+    </div>
 
     <!-- Footer -->
     <div class="popup-footer">

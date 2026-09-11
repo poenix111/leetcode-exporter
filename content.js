@@ -1,6 +1,6 @@
 /* ============================================================
    LeetCode to PDF — Content Script
-   Extracts problem description and triggers print-to-PDF
+   Extracts problem description and code solution, triggers print-to-PDF
    ============================================================ */
 
 (function () {
@@ -41,6 +41,38 @@
     'div[class*="difficulty"]',
   ];
 
+  /* ---- Language and File Mapping ---- */
+  const LANG_MAP = {
+    "cpp": { name: "C++", ext: ".cpp", hljs: "cpp" },
+    "c++": { name: "C++", ext: ".cpp", hljs: "cpp" },
+    "java": { name: "Java", ext: ".java", hljs: "java" },
+    "python": { name: "Python", ext: ".py", hljs: "python" },
+    "python3": { name: "Python3", ext: ".py", hljs: "python" },
+    "c": { name: "C", ext: ".c", hljs: "c" },
+    "csharp": { name: "C#", ext: ".cs", hljs: "csharp" },
+    "c#": { name: "C#", ext: ".cs", hljs: "csharp" },
+    "javascript": { name: "JavaScript", ext: ".js", hljs: "javascript" },
+    "typescript": { name: "TypeScript", ext: ".ts", hljs: "typescript" },
+    "php": { name: "PHP", ext: ".php", hljs: "php" },
+    "swift": { name: "Swift", ext: ".swift", hljs: "swift" },
+    "kotlin": { name: "Kotlin", ext: ".kt", hljs: "kotlin" },
+    "dart": { name: "Dart", ext: ".dart", hljs: "dart" },
+    "golang": { name: "Go", ext: ".go", hljs: "go" },
+    "go": { name: "Go", ext: ".go", hljs: "go" },
+    "ruby": { name: "Ruby", ext: ".rb", hljs: "ruby" },
+    "scala": { name: "Scala", ext: ".scala", hljs: "scala" },
+    "rust": { name: "Rust", ext: ".rs", hljs: "rust" },
+    "racket": { name: "Racket", ext: ".rkt", hljs: "scheme" },
+    "erlang": { name: "Erlang", ext: ".erl", hljs: "erlang" },
+    "elixir": { name: "Elixir", ext: ".ex", hljs: "elixir" },
+    "sql": { name: "SQL", ext: ".sql", hljs: "sql" },
+    "mysql": { name: "MySQL", ext: ".sql", hljs: "sql" },
+    "mssql": { name: "MS SQL Server", ext: ".sql", hljs: "sql" },
+    "oraclesql": { name: "Oracle SQL", ext: ".sql", hljs: "sql" },
+    "postgresql": { name: "PostgreSQL", ext: ".sql", hljs: "sql" },
+    "pythondata": { name: "Pandas", ext: ".py", hljs: "python" },
+  };
+
   /* ---- Helpers ---- */
 
   function queryFirst(selectors, root = document) {
@@ -51,6 +83,94 @@
       } catch (_) {}
     }
     return null;
+  }
+
+  function getProblemSlug() {
+    const pathParts = window.location.pathname.split("/").filter(Boolean);
+    const probIndex = pathParts.indexOf("problems");
+    if (probIndex !== -1 && pathParts[probIndex + 1]) {
+      return pathParts[probIndex + 1];
+    }
+    return "leetcode-solution";
+  }
+
+  function resolveLanguageInfo(rawLang) {
+    if (!rawLang) return { name: "Code", ext: ".txt", hljs: "plaintext" };
+    const clean = rawLang.toLowerCase().replace(/\s+/g, "");
+    return LANG_MAP[clean] || { name: rawLang, ext: ".txt", hljs: clean };
+  }
+
+  function detectLanguageFromDOM(editorEl) {
+    if (editorEl) {
+      const ta = editorEl.querySelector("textarea.inputarea");
+      const mode = ta?.getAttribute("data-mode-id");
+      if (mode && LANG_MAP[mode.toLowerCase()]) {
+        return LANG_MAP[mode.toLowerCase()];
+      }
+    }
+
+    const buttons = Array.from(
+      document.querySelectorAll("button, [role='button']")
+    );
+    for (const btn of buttons) {
+      const text = btn.innerText?.trim();
+      if (text) {
+        const key = text.toLowerCase().replace(/\s+/g, "");
+        if (LANG_MAP[key]) return LANG_MAP[key];
+      }
+    }
+
+    return { name: "Code", ext: ".txt", hljs: "plaintext" };
+  }
+
+  function extractCodeFromDOM() {
+    const editors = Array.from(document.querySelectorAll(".monaco-editor"));
+    if (editors.length === 0) return null;
+
+    // Filter candidate editor that is not console/testcase
+    let mainEditor = editors.find((ed) => {
+      const isConsole = ed.closest(
+        '[class*="console"], [class*="testcase"], [class*="test-result"]'
+      );
+      const ta = ed.querySelector("textarea.inputarea");
+      const mode = ta?.getAttribute("data-mode-id");
+      return !isConsole && mode && mode !== "plaintext";
+    });
+
+    if (!mainEditor) {
+      let maxArea = 0;
+      for (const ed of editors) {
+        const rect = ed.getBoundingClientRect();
+        const area = rect.width * rect.height;
+        if (area > maxArea) {
+          maxArea = area;
+          mainEditor = ed;
+        }
+      }
+    }
+
+    if (!mainEditor) return null;
+
+    const lang = detectLanguageFromDOM(mainEditor);
+    const viewLines = mainEditor.querySelector(".view-lines");
+    let code = "";
+
+    if (viewLines) {
+      const lines = Array.from(viewLines.querySelectorAll(".view-line"));
+      code = lines
+        .map((line) => line.textContent.replace(/\u00a0/g, " "))
+        .join("\n");
+    }
+
+    return { code, language: lang };
+  }
+
+  function getSolutionCode(options = {}) {
+    if (options?.editorData?.code) {
+      const langInfo = resolveLanguageInfo(options.editorData.language);
+      return { code: options.editorData.code, language: langInfo };
+    }
+    return extractCodeFromDOM();
   }
 
   function getRootDescriptionElement() {
@@ -96,7 +216,9 @@
 
     // 3. Document title fallback: "83. Remove Duplicates from Sorted List - LeetCode"
     if (document.title) {
-      const clean = document.title.replace(/\s*[-–—|]\s*LeetCode.*$/i, "").trim();
+      const clean = document.title
+        .replace(/\s*[-–—|]\s*LeetCode.*$/i, "")
+        .trim();
       if (clean) return clean;
     }
 
@@ -122,7 +244,8 @@
 
     // 1. Search by difficulty selector
     const el = descRoot
-      ? queryFirst(DIFFICULTY_SELECTORS, descRoot) || queryFirst(DIFFICULTY_SELECTORS)
+      ? queryFirst(DIFFICULTY_SELECTORS, descRoot) ||
+        queryFirst(DIFFICULTY_SELECTORS)
       : queryFirst(DIFFICULTY_SELECTORS);
 
     if (el) {
@@ -153,7 +276,6 @@
     const clone = descRoot.cloneNode(true);
 
     // Remove the first child if it contains the problem title / difficulty badge
-    // (since we render our own clean title and difficulty badge in the header)
     if (clone.children.length > 0) {
       const firstChild = clone.children[0];
       const hasTitleOrProbLink =
@@ -190,7 +312,7 @@
       }
     });
 
-    // Resolve relative URLs to absolute URLs so all diagrams and images render properly
+    // Resolve relative URLs to absolute URLs so all diagrams render properly
     clone.querySelectorAll("img").forEach((img) => {
       const src = img.getAttribute("src");
       if (src && !src.startsWith("http") && !src.startsWith("data:")) {
@@ -199,6 +321,128 @@
     });
 
     return clone.innerHTML;
+  }
+
+  function escapeHtml(text) {
+    const map = {
+      "&": "&amp;",
+      "<": "&lt;",
+      ">": "&gt;",
+      '"': "&quot;",
+      "'": "&#039;",
+    };
+    return String(text).replace(/[&<>"']/g, (m) => map[m]);
+  }
+
+  function highlightCodeToHTML(code, hljsLang, showLineNumbers = true) {
+    let highlighted = "";
+    try {
+      if (window.hljs) {
+        if (hljsLang && window.hljs.getLanguage(hljsLang)) {
+          highlighted = window.hljs.highlight(code, {
+            language: hljsLang,
+            ignoreIllegals: true,
+          }).value;
+        } else {
+          highlighted = window.hljs.highlightAuto(code).value;
+        }
+      } else {
+        highlighted = escapeHtml(code);
+      }
+    } catch (_) {
+      highlighted = escapeHtml(code);
+    }
+
+    const rawLines = highlighted.split("\n");
+    return rawLines
+      .map((lineContent, index) => {
+        const lineNum = index + 1;
+        const lineHtml = lineContent || "&nbsp;";
+        if (showLineNumbers) {
+          return `<div class="code-line"><span class="code-line-number">${lineNum}</span><span class="code-line-code">${lineHtml}</span></div>`;
+        } else {
+          return `<div class="code-line"><span class="code-line-code">${lineHtml}</span></div>`;
+        }
+      })
+      .join("");
+  }
+
+  function buildCodeSection(code, langInfo, options = {}) {
+    const {
+      includeCode = true,
+      codeTheme = "github-light",
+      showLineNumbers = true,
+    } = options;
+
+    if (!includeCode || !code || code.trim().length === 0) {
+      return "";
+    }
+
+    const slug = getProblemSlug();
+    const filename = `${slug}${langInfo.ext}`;
+    const formattedCode = highlightCodeToHTML(
+      code,
+      langInfo.hljs,
+      showLineNumbers
+    );
+    const themeObj =
+      (window.CODE_THEMES && window.CODE_THEMES[codeTheme]) || {
+        name: codeTheme,
+      };
+
+    return `
+    <div class="code-section theme-${codeTheme}">
+      <div class="code-section-header">
+        <span>💻 Solution Code</span>
+        <span class="code-section-meta">${langInfo.name} · ${themeObj.name || codeTheme}</span>
+      </div>
+      <div class="code-window">
+        <div class="code-window-header">
+          <div class="code-window-controls">
+            <span class="dot dot-red"></span>
+            <span class="dot dot-yellow"></span>
+            <span class="dot dot-green"></span>
+          </div>
+          <div class="code-window-title">${filename}</div>
+          <div class="code-window-badge">${langInfo.name}</div>
+        </div>
+        <div class="code-body">
+          ${formattedCode}
+        </div>
+      </div>
+    </div>`;
+  }
+
+  function downloadCodeFile(code, filename) {
+    const blob = new Blob([code], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => {
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }, 100);
+  }
+
+  function handleDownloadCode(options = {}) {
+    const sol = getSolutionCode(options);
+    if (!sol || !sol.code || sol.code.trim().length === 0) {
+      alert(
+        "LeetCode to PDF:\n\n" +
+          "Could not detect solution code from the editor.\n" +
+          "Please ensure the code editor is open with code present."
+      );
+      return false;
+    }
+
+    const slug = getProblemSlug();
+    const filename = `${slug}${sol.language.ext}`;
+    downloadCodeFile(sol.code, filename);
+    showToast(`Downloaded ${filename}! 💾`);
+    return true;
   }
 
   function showToast(message) {
@@ -217,7 +461,13 @@
 
   /* ---- Print Template Builder ---- */
 
-  function buildPrintDocument(title, difficulty, descriptionHTML, options = {}) {
+  function buildPrintDocument(
+    title,
+    difficulty,
+    descriptionHTML,
+    solutionData,
+    options = {}
+  ) {
     const { includeImages = true, includeHandwritingSpace = true } = options;
 
     const diffBadge = difficulty.text
@@ -227,6 +477,11 @@
     const imageRule = includeImages
       ? ""
       : "img, svg { display: none !important; }";
+
+    const codeSection =
+      solutionData && solutionData.code
+        ? buildCodeSection(solutionData.code, solutionData.language, options)
+        : "";
 
     const handwritingSection = includeHandwritingSpace
       ? `
@@ -240,6 +495,7 @@
       : "";
 
     const problemUrl = window.location.href;
+    const themesCSS = window.getAllThemesCSS ? window.getAllThemesCSS() : "";
 
     return `<!DOCTYPE html>
 <html lang="en">
@@ -268,6 +524,10 @@
       margin-bottom: 20px;
       padding-bottom: 12px;
       border-bottom: 2px solid #e5e7eb;
+      break-inside: avoid;
+      page-break-inside: avoid;
+      break-after: avoid;
+      page-break-after: avoid;
     }
 
     .problem-header h1 {
@@ -276,6 +536,11 @@
       color: #111827;
       line-height: 1.3;
       margin-bottom: 8px;
+    }
+
+    h1, h2, h3, h4, h5, h6 {
+      break-after: avoid;
+      page-break-after: avoid;
     }
 
     .header-meta {
@@ -336,6 +601,7 @@
       margin: 12px 0;
       white-space: pre-wrap;
       word-wrap: break-word;
+      break-inside: avoid;
       page-break-inside: avoid;
       color: #1f2937;
     }
@@ -359,6 +625,7 @@
       height: auto;
       margin: 10px 0;
       display: block;
+      break-inside: avoid;
       page-break-inside: avoid;
     }
 
@@ -367,10 +634,138 @@
       height: auto;
     }
 
+    /* ---- Code Section Styles ---- */
+    .code-section {
+      margin-top: 22px;
+      margin-bottom: 18px;
+      break-inside: avoid;
+      page-break-inside: avoid;
+    }
+
+    .code-section-header {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      border-bottom: 1px solid #d1d5db;
+      padding-bottom: 4px;
+      margin-bottom: 10px;
+      break-after: avoid;
+      page-break-after: avoid;
+    }
+
+    .code-section-header span:first-child {
+      font-size: 12pt;
+      font-weight: 700;
+      color: #111827;
+    }
+
+    .code-section-meta {
+      font-size: 8.5pt;
+      font-weight: 500;
+      color: #6b7280;
+    }
+
+    .code-window {
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      overflow: hidden;
+      font-family: "JetBrains Mono", Consolas, "SFMono-Regular", Menlo, Monaco, monospace;
+      font-size: 9.2pt;
+      line-height: 1.55;
+      box-shadow: 0 1px 4px rgba(0, 0, 0, 0.05);
+      break-inside: avoid;
+      page-break-inside: avoid;
+      box-decoration-break: clone;
+      -webkit-box-decoration-break: clone;
+    }
+
+    .code-window-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 12px;
+      border-bottom: 1px solid #e5e7eb;
+      border-top-left-radius: 7px;
+      border-top-right-radius: 7px;
+      font-size: 8.5pt;
+      user-select: none;
+      break-after: avoid;
+      page-break-after: avoid;
+    }
+
+    .code-window-controls {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      width: 50px;
+    }
+
+    .dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      display: inline-block;
+    }
+
+    .dot-red { background: #ff5f56; border: 1px solid #e0443e; }
+    .dot-yellow { background: #ffbd2e; border: 1px solid #dea123; }
+    .dot-green { background: #27c93f; border: 1px solid #1aab29; }
+
+    .code-window-title {
+      font-weight: 600;
+      letter-spacing: 0.2px;
+    }
+
+    .code-window-badge {
+      font-size: 7.5pt;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      padding: 1px 6px;
+      border-radius: 4px;
+      background: rgba(125, 125, 125, 0.15);
+    }
+
+    .code-body {
+      padding: 10px 0;
+      overflow-x: auto;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    .code-line {
+      display: flex;
+      align-items: flex-start;
+      min-height: 19px;
+      break-inside: avoid;
+      page-break-inside: avoid;
+    }
+
+    .code-line-number {
+      display: inline-block;
+      min-width: 44px;
+      max-width: 44px;
+      padding-right: 12px;
+      text-align: right;
+      font-size: 8.5pt;
+      border-right: 1px solid transparent;
+      user-select: none;
+      flex-shrink: 0;
+    }
+
+    .code-line-code {
+      padding-left: 12px;
+      padding-right: 12px;
+      flex: 1;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
     /* Handwriting section */
     .handwriting-section {
-      margin-top: 16px;
-      page-break-inside: auto;
+      margin-top: 20px;
+      break-inside: avoid;
+      page-break-inside: avoid;
     }
 
     .handwriting-title {
@@ -380,6 +775,8 @@
       border-bottom: 1px solid #d1d5db;
       padding-bottom: 4px;
       margin-bottom: 10px;
+      break-after: avoid;
+      page-break-after: avoid;
     }
 
     .handwriting-title span {
@@ -403,19 +800,38 @@
       background-image:
         linear-gradient(to right, rgba(209, 213, 219, 0.45) 1px, transparent 1px),
         linear-gradient(to bottom, rgba(209, 213, 219, 0.45) 1px, transparent 1px);
+      break-inside: avoid;
+      page-break-inside: avoid;
     }
 
+    /* Print media overrides */
     @media print {
       body {
         -webkit-print-color-adjust: exact !important;
         print-color-adjust: exact !important;
       }
+      .problem-header {
+        break-inside: avoid;
+        page-break-inside: avoid;
+        break-after: avoid;
+        page-break-after: avoid;
+      }
       .grid-sheet {
         min-height: 380px;
+      }
+      .code-window {
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+        overflow: visible !important;
+      }
+      .code-body {
+        overflow: visible !important;
       }
     }
 
     ${imageRule}
+
+    ${themesCSS}
   </style>
 </head>
 <body>
@@ -431,12 +847,14 @@
     ${descriptionHTML}
   </div>
 
+  ${codeSection}
+
   ${handwritingSection}
 </body>
 </html>`;
   }
 
-  /* ---- Invisible iframe Print Driver (Zero popup blocking / No CSP issues) ---- */
+  /* ---- Invisible iframe Print Driver ---- */
 
   function triggerIframePrint(html) {
     const existing = document.getElementById("leetcode-pdf-print-frame");
@@ -461,7 +879,6 @@
 
     showToast("Preparing print dialog… 🖨️");
 
-    // Wait for images to load, then trigger native print
     const images = Array.from(doc.querySelectorAll("img"));
     let loadedCount = 0;
     let printed = false;
@@ -478,7 +895,7 @@
     if (images.length === 0) {
       doPrint();
     } else {
-      const timeout = setTimeout(doPrint, 2500); // 2.5s fallback
+      const timeout = setTimeout(doPrint, 2500);
       images.forEach((img) => {
         if (img.complete) {
           loadedCount++;
@@ -506,8 +923,8 @@
     if (!descRoot) {
       alert(
         "LeetCode to PDF:\n\n" +
-        "Could not detect the problem description content.\n" +
-        "Please ensure you are on the 'Description' tab of a LeetCode problem."
+          "Could not detect the problem description content.\n" +
+          "Please ensure you are on the 'Description' tab of a LeetCode problem."
       );
       return;
     }
@@ -517,25 +934,41 @@
     const html = extractDescriptionHTML(descRoot);
 
     if (!html || html.trim().length === 0) {
-      alert("LeetCode to PDF:\n\nDescription content is still loading. Please wait 2 seconds and try again.");
+      alert(
+        "LeetCode to PDF:\n\nDescription content is still loading. Please wait 2 seconds and try again."
+      );
       return;
     }
 
     function proceed(finalOptions) {
-      const fullDoc = buildPrintDocument(title, difficulty, html, finalOptions);
+      const solutionData = finalOptions.includeCode !== false
+        ? getSolutionCode(finalOptions)
+        : null;
+
+      const fullDoc = buildPrintDocument(
+        title,
+        difficulty,
+        html,
+        solutionData,
+        finalOptions
+      );
       triggerIframePrint(fullDoc);
     }
 
     if (options) {
       proceed(options);
     } else {
-      // Fetch settings with fallback
-      const defaults = { includeImages: true, includeHandwritingSpace: true };
+      const defaults = {
+        includeImages: true,
+        includeHandwritingSpace: true,
+        includeCode: true,
+        codeTheme: "github-light",
+        showLineNumbers: true,
+      };
       try {
-        if (chrome?.storage?.sync) {
-          chrome.storage.sync.get(defaults, (data) => proceed(data || defaults));
-        } else if (chrome?.storage?.local) {
-          chrome.storage.local.get(defaults, (data) => proceed(data || defaults));
+        const storage = chrome?.storage?.sync || chrome?.storage?.local;
+        if (storage) {
+          storage.get(defaults, (data) => proceed(data || defaults));
         } else {
           proceed(defaults);
         }
@@ -552,8 +985,8 @@
 
     const btn = document.createElement("button");
     btn.id = BTN_ID;
-    btn.title = "Export problem description to clean PDF for handwriting";
-    btn.setAttribute("aria-label", "Export problem description to PDF");
+    btn.title = "Export problem description and code solution to PDF";
+    btn.setAttribute("aria-label", "Export problem to PDF");
     btn.innerHTML = `
       <svg viewBox="0 0 24 24">
         <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
@@ -582,14 +1015,12 @@
     }
   }
 
-  // Run on load and periodically observe SPA changes
   checkAndInject();
 
   const interval = setInterval(() => {
     checkAndInject();
   }, 1000);
 
-  // Stop polling after 30s to conserve resources, but observer keeps listening
   setTimeout(() => clearInterval(interval), 30000);
 
   const observer = new MutationObserver(() => {
@@ -607,6 +1038,9 @@
     } else if (msg.action === "exportPDF") {
       executeExport(msg.options);
       sendResponse({ ok: true });
+    } else if (msg.action === "downloadCode") {
+      const success = handleDownloadCode(msg.options);
+      sendResponse({ ok: success });
     }
     return true;
   });
