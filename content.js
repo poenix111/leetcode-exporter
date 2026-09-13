@@ -123,6 +123,40 @@
     return { name: "Code", ext: ".txt", hljs: "plaintext" };
   }
 
+  function ensureMainWorldBridge() {
+    if (document.documentElement.getAttribute("data-leetcode-pdf-ready") === "1") {
+      return;
+    }
+    try {
+      if (chrome?.runtime?.getURL) {
+        const existing = document.getElementById("leetcode-pdf-main-bridge");
+        if (!existing) {
+          const script = document.createElement("script");
+          script.id = "leetcode-pdf-main-bridge";
+          script.src = chrome.runtime.getURL("main-world.js");
+          (document.head || document.documentElement).appendChild(script);
+        }
+      }
+    } catch (_) {}
+  }
+
+  function fetchCodeFromMainWorld() {
+    ensureMainWorldBridge();
+    try {
+      document.documentElement.removeAttribute("data-leetcode-pdf-code");
+      window.dispatchEvent(new CustomEvent("LEETCODE_PDF_REQ_CODE"));
+      const raw = document.documentElement.getAttribute("data-leetcode-pdf-code");
+      document.documentElement.removeAttribute("data-leetcode-pdf-code");
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed.code === "string" && parsed.code.trim().length > 0) {
+          return parsed;
+        }
+      }
+    } catch (_) {}
+    return null;
+  }
+
   function extractCodeFromDOM() {
     const editors = Array.from(document.querySelectorAll(".monaco-editor"));
     if (editors.length === 0) return null;
@@ -157,6 +191,13 @@
 
     if (viewLines) {
       const lines = Array.from(viewLines.querySelectorAll(".view-line"));
+      // Sort lines by vertical position because Monaco recycles DOM elements in arbitrary tree order
+      lines.sort((a, b) => {
+        const topA = parseFloat(a.style.top) || a.getBoundingClientRect().top || 0;
+        const topB = parseFloat(b.style.top) || b.getBoundingClientRect().top || 0;
+        return topA - topB;
+      });
+
       code = lines
         .map((line) => line.textContent.replace(/\u00a0/g, " "))
         .join("\n");
@@ -166,10 +207,26 @@
   }
 
   function getSolutionCode(options = {}) {
-    if (options?.editorData?.code) {
+    // 1. If code was supplied via options (e.g. from popup)
+    if (options?.editorData?.code && options.editorData.code.trim().length > 0) {
       const langInfo = resolveLanguageInfo(options.editorData.language);
       return { code: options.editorData.code, language: langInfo };
     }
+
+    // 2. Query Monaco model directly via main-world bridge
+    const mainWorldData = fetchCodeFromMainWorld();
+    if (mainWorldData && mainWorldData.code && mainWorldData.code.trim().length > 0) {
+      let langInfo = resolveLanguageInfo(mainWorldData.language);
+      if (!langInfo || langInfo.hljs === "plaintext") {
+        const domLang = detectLanguageFromDOM();
+        if (domLang && domLang.hljs !== "plaintext") {
+          langInfo = domLang;
+        }
+      }
+      return { code: mainWorldData.code, language: langInfo };
+    }
+
+    // 3. Fallback: extract from Monaco DOM (with line order sorting)
     return extractCodeFromDOM();
   }
 

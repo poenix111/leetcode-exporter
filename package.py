@@ -9,6 +9,7 @@ OUTPUT_ZIP = "leetcode-to-pdf.zip"
 
 FILES_TO_INCLUDE = [
     "manifest.json",
+    "main-world.js",
     "highlight.min.js",
     "code-themes.js",
     "content.js",

@@ -85,6 +85,49 @@
         func: () => {
           try {
             if (window.monaco && window.monaco.editor) {
+              // 1. Check getEditors() to prioritize the main solution editor
+              if (typeof window.monaco.editor.getEditors === "function") {
+                const editors = window.monaco.editor.getEditors();
+                let bestEditor = null;
+                let maxArea = 0;
+
+                for (const ed of editors) {
+                  const dom = ed.getDomNode ? ed.getDomNode() : null;
+                  if (!dom) continue;
+
+                  const isConsole = dom.closest(
+                    '[class*="console"], [class*="testcase"], [class*="test-result"]'
+                  );
+                  if (isConsole) continue;
+
+                  const rect = dom.getBoundingClientRect();
+                  const area = rect.width * rect.height;
+                  const model = ed.getModel ? ed.getModel() : null;
+                  const lang = model
+                    ? (model.getLanguageId ? model.getLanguageId() : (model.getModeId ? model.getModeId() : ""))
+                    : "";
+
+                  if (lang && lang !== "plaintext" && area > 0) {
+                    if (area > maxArea) {
+                      maxArea = area;
+                      bestEditor = ed;
+                    }
+                  }
+                }
+
+                if (bestEditor) {
+                  const m = bestEditor.getModel ? bestEditor.getModel() : null;
+                  const code = bestEditor.getValue ? bestEditor.getValue() : "";
+                  if (code && code.trim().length > 0) {
+                    return {
+                      code,
+                      language: m ? (m.getLanguageId ? m.getLanguageId() : (m.getModeId ? m.getModeId() : "")) : "",
+                    };
+                  }
+                }
+              }
+
+              // 2. Fallback to getModels()
               const models = window.monaco.editor.getModels();
               for (const m of models) {
                 const lang = m.getLanguageId
@@ -92,12 +135,13 @@
                   : m.getModeId
                   ? m.getModeId()
                   : "";
-                const val = m.getValue();
+                const val = m.getValue ? m.getValue() : "";
                 const uriStr = m.uri ? m.uri.toString() : "";
                 if (
                   lang &&
                   lang !== "plaintext" &&
                   !uriStr.includes("input") &&
+                  !uriStr.includes("console") &&
                   val &&
                   val.trim().length > 0
                 ) {
@@ -107,7 +151,7 @@
               if (models.length > 0) {
                 const m = models[0];
                 return {
-                  code: m.getValue(),
+                  code: m.getValue ? m.getValue() : "",
                   language: m.getLanguageId
                     ? m.getLanguageId()
                     : m.getModeId
@@ -137,21 +181,31 @@
           chrome.scripting.insertCSS(
             { target: { tabId }, files: ["content-button.css"] },
             () => {
+              // Inject main-world bridge first
               chrome.scripting.executeScript(
                 {
                   target: { tabId },
-                  files: ["highlight.min.js", "code-themes.js", "content.js"],
+                  world: "MAIN",
+                  files: ["main-world.js"],
                 },
                 () => {
-                  if (chrome.runtime.lastError) {
-                    callback(false, false);
-                  } else {
-                    setTimeout(() => {
-                      chrome.tabs.sendMessage(tabId, { action: "ping" }, (res2) => {
-                        callback(true, !!res2?.ready);
-                      });
-                    }, 250);
-                  }
+                  chrome.scripting.executeScript(
+                    {
+                      target: { tabId },
+                      files: ["highlight.min.js", "code-themes.js", "content.js"],
+                    },
+                    () => {
+                      if (chrome.runtime.lastError) {
+                        callback(false, false);
+                      } else {
+                        setTimeout(() => {
+                          chrome.tabs.sendMessage(tabId, { action: "ping" }, (res2) => {
+                            callback(true, !!res2?.ready);
+                          });
+                        }, 250);
+                      }
+                    }
+                  );
                 }
               );
             }
